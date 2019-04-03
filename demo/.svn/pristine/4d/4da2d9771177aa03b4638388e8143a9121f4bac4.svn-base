@@ -1,0 +1,129 @@
+#endocing:utf-8
+'''
+订单实体类
+'''
+import uuid
+from django.db import models
+from user.models import Customer
+from system.models import SysUser
+from material.models import Material
+from DjangoUeditor.models import UEditorField
+# Create your models here.
+
+class Order(models.Model):
+    '''
+    订单单头
+    '''
+    STATUS_CHOICES = (
+        (u'new',u'新订单'),
+        (u'cancel',u'已取消'),
+        (u'accept',u'已接单'),
+        (u'confirm',u'已取件'),
+        (u'sending',u'已送达'),
+        (u'complate',u'已完成'),
+        (u'closed',u'已关闭'),
+    )
+
+    PAY_TYPE = (
+        (u'cash',u'现金支付'),
+        (u'wechat',u'微信支付'),
+        (u'alipay',u'支付宝'),
+        (u'monthly',u'月结'),
+    )
+    
+    id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    increment_id     = models.CharField(max_length=20, null=False,default='',verbose_name=u'订单编号')
+    is_paied         = models.BooleanField(default=False,verbose_name=u'是否付款')
+    paied_type       = models.CharField(choices=PAY_TYPE,max_length=15,default='cash',verbose_name=u'付款方式')
+    customer         = models.ForeignKey(Customer,db_index=True,on_delete=models.SET_NULL,null=True,blank=True,db_constraint=False,verbose_name=u'下单客户', related_name='order_customer')
+    servicer         = models.ForeignKey(Customer,db_index=True,on_delete=models.SET_NULL,null=True,blank=True,db_constraint=False,verbose_name=u'接单用户', related_name='order_servicer')
+    pickup_province  = models.CharField(max_length=150, null=False,default='',verbose_name=u'提货省份')
+    pickup_city      = models.CharField(max_length=150, null=False,default='',verbose_name=u'提货城市')
+    pickup_region    = models.CharField(max_length=150, null=False,default='',verbose_name=u'提货区')
+    pickup_address   = models.CharField(max_length=150, null=False,default='',verbose_name=u'详细地址')
+    pickup_contact   = models.CharField(max_length=150, null=False,default='',verbose_name=u'联系人')
+    pickup_phone     = models.CharField(max_length=150, null=False,default='',verbose_name=u'联系电话')
+    need_cold_chain  = models.BooleanField(default=False,verbose_name=u'是否需要冷链车')
+    subtotal         = models.FloatField(u'总计',default=0.0)    
+    matlist          = models.TextField(u'商品列表',default='',null=True,blank=True)
+    mat_count        = models.FloatField(u'商品总计',default=0.0)    
+    status           = models.CharField(u'订单状态',default='new',max_length=50,choices=STATUS_CHOICES)
+    remark           = UEditorField(width=600, height=300, toolbars="full", imagePath="upload/remark/%(basename)s_%(datetime)s.%(extname)s", filePath="upload/remark/", upload_settings={"imageMaxSize":5242880},default='',verbose_name=u'备注')
+    created_at       = models.DateTimeField(u'下单时间',auto_now_add=True)
+    created_by       = models.ForeignKey(Customer,db_index=True,on_delete=models.SET_NULL,null=True,blank=True,db_constraint=False, editable=False,verbose_name=u'创建人', related_name='order_created_by')
+    pickuped_at      = models.DateTimeField(u'提货时间',null=True,blank=True)
+    pickuped_by      = models.ForeignKey(Customer,db_index=True,on_delete=models.SET_NULL,null=True,blank=True,db_constraint=False,verbose_name=u'提货人', related_name='order_pickuped_by')
+    canceled_at      = models.DateTimeField(u'取消时间',null=True,blank=True)
+    canceled_by      = models.ForeignKey(Customer,db_index=True,on_delete=models.SET_NULL,null=True,blank=True,db_constraint=False,verbose_name=u'取消人', related_name='order_canceled_by')
+    closed_at        = models.DateTimeField(u'关闭时间',null=True,blank=True)
+    closed_by        = models.ForeignKey(Customer,db_index=True,on_delete=models.SET_NULL,null=True,blank=True,db_constraint=False,verbose_name=u'关闭人', related_name='order_closed_by')
+    why_closed       = models.CharField(u'关闭原因',max_length=150,default='',null=True,blank=True)
+    complate_at      = models.DateTimeField(u'完成时间',null=True,blank=True)
+
+    def __str__(self):
+        return self.increment_id
+
+    def canCancel(self):
+        return self.status == 'new' or self.status == 'accept'
+
+    def newIncrementId(self):
+        '''
+        获取新的单号
+        '''
+        import time 
+        now = int(time.time()) 
+        #转换为其他日期格式,如:"%Y-%m-%d %H:%M:%S" 
+        timeStruct = time.localtime(now) 
+        numrole = time.strftime('%Y%m%d',timeStruct)
+        serialLen = 8
+        try:
+            onum = OrderNum.objects.get(numrole=numrole)
+            serial = onum.serial
+            onum.serial = int(serial)+1
+            onum.save()
+        except OrderNum.DoesNotExist:
+            onum = OrderNum(numrole=numrole,serial=2)
+            onum.save()
+            serial = 1
+        except Exception as e:
+            raise e
+
+        return (numrole if numrole is not None else '') + str(serial).zfill(serialLen-len(str(serial)))
+
+    class Meta:        
+        verbose_name = u'订单'
+        verbose_name_plural = verbose_name
+
+class OrderConsignee(models.Model):
+    '''
+    订单收货表
+    '''
+    id        = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order     = models.ForeignKey(Order,on_delete=models.CASCADE,db_constraint=False,verbose_name=u'关联订单')
+    province  = models.CharField(max_length=150, null=False,default='',verbose_name=u'收货省份')
+    city      = models.CharField(max_length=150, null=False,default='',verbose_name=u'收货城市')
+    region    = models.CharField(max_length=150, null=False,default='',verbose_name=u'收货区')
+    address   = models.CharField(max_length=150, null=False,default='',verbose_name=u'详细地址')
+    contact   = models.CharField(max_length=150, null=False,default='',verbose_name=u'联系人')
+    phone     = models.CharField(max_length=150, null=False,default='',verbose_name=u'联系电话')
+    matlist   = models.TextField(u'商品列表',default='',null=True,blank=True)
+    mat_count = models.FloatField(u'商品小计',default=0.0)    
+    distince  = models.FloatField(default=0,verbose_name='送货距离')
+    sended_at = models.DateTimeField(u'送达时间',null=True,blank=True)
+    remark    = UEditorField(width=600, height=300, toolbars="full", imagePath="upload/remark/%(basename)s_%(datetime)s.%(extname)s", filePath="upload/remark/", upload_settings={"imageMaxSize":5242880},default='',verbose_name=u'备注')
+
+    class Meta:
+        verbose_name = u'收货人信息'
+        verbose_name_plural = verbose_name
+
+#订单单号记录表
+class OrderNum(models.Model):
+    '''
+    订单单号
+    '''
+    numrole = models.CharField(primary_key=True,max_length=10)
+    serial = models.IntegerField(default=1)
+
+    class Meta:
+        verbose_name = u'订单单号记录'
+        verbose_name_plural = verbose_name

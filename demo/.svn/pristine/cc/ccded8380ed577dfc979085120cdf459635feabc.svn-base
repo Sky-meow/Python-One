@@ -1,0 +1,12 @@
+#encoding:utf-8
+import user.api as api
+from django.urls import path,re_path
+
+app_name = 'customer'
+urlpatterns = [
+    path('get_customers',api.get_customers.as_view()),
+    re_path(r'get_customer/(?P<token>.+)/$',api.get_customer),
+    path('login',api.Login.as_view()),
+    path('logout',api.logout),
+    path('register',api.Register.as_view()),
+]

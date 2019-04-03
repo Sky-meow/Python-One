@@ -1,0 +1,162 @@
+#encoding: utf-8
+
+from .pay import *
+import qrcode
+from django.http import HttpResponse
+from django.utils.six import BytesIO
+from rest_framework.views import APIView
+from rest_framework.decorators import api_view
+from api.response import JsonResponse
+from datetime import datetime,timedelta
+from django.db import transaction 
+
+class Pay(APIView):
+    '''
+    调用支付宝的统一支付接口,获取预付信息
+    ---
+    Parameters:
+    incrementId 订单号 保证金传入保证金的订单号 订单传入BilNo
+    payfor 判断是保证金(deposit)还是订单(order)
+    '''
+    @transaction.atomic()
+    def post(self, request):
+
+        if 'incrementId' not in request.data.keys():
+            return JsonResponse(code=400,desc=u'请先传入订单号')
+
+        out_trade_no = request.data['incrementId']
+        subject = ''
+        amt = 0
+        if 'payfor' in request.data.keys():
+            if request.data['payfor'] == 'deposit':
+                subject = u'保证金充值'
+                from money.models import Receipt
+                try:
+                    recipt = Receipt.objects.get(incrementId=out_trade_no,status='unpaied')
+                    amt = recipt.Amt
+                except Receipt.DoesNotExist:
+                    return JsonResponse(code=400,desc=u'订单不存在或者已付款')
+                except Exception as e:
+                    raise e
+                    return JsonResponse(code=400,desc=u'ERROR')
+            elif request.data['payfor'] == 'order':
+                subject = u'订单支付'                
+                from order.models import Order
+                try:
+                    order = Order.objects.get(BilNo=out_trade_no,Paied=False)
+                    amt = order.TotalAmt
+                except Receipt.DoesNotExist:
+                    return JsonResponse(code=400,desc=u'订单不存在或者已付款')
+                except Exception as e:
+                    raise e
+                    return JsonResponse(code=400,desc=u'ERROR')
+            else:
+                return JsonResponse(code=400,desc=u'支付类型不正确')
+        else:
+            return JsonResponse(code=400,desc=u'请确认要支付的类型是保证金还是订单')
+
+        alipay = AliPay()
+        alipay.api_alipay_trade_precreate(subject, out_trade_no, amt)
+
+        paid = False
+        trade_no = None
+        for i in range(10):
+            # check every 3s, and 10 times in all
+            print("now sleep 3s")
+            time.sleep(3)
+            result = alipay.api_alipay_trade_query(out_trade_no=out_trade_no)
+            if result.get("trade_status", "") == "TRADE_SUCCESS":
+                paid = True
+                trade_no = request.get('trade_no', None)
+                break
+            print("not paid...")
+
+        # order is not paid in 30s , cancel this order
+        if paid is False:
+            alipay.api_alipay_trade_cancel(out_trade_no=out_trade_no)
+        else:
+            if request.data['payfor'] == 'deposit':
+                from money.models import Receipt
+                try:
+                    recipt = Receipt.objects.get(incrementId=out_trade_no,status='unpaied')
+                    receipt.translateNumber = trade_no
+                    recipt.status = 'paied'
+                    recipt.save()
+                    recipt.customer.Deposit = recipt.customer.Deposit + receipt.Amt
+                    recipt.customer.save()
+                except Receipt.DoesNotExist:
+                    return JsonResponse(code=400,desc=u'订单不存在或者已付款')
+                except Exception as e:
+                    raise e
+                    return JsonResponse(code=400,desc=u'ERROR')
+            elif request.data['payfor'] == 'order':
+                from order.models import Order
+                try:
+                    order = Order.objects.get(BilNo=out_trade_no,Paied=False)
+                    order.Paied = True
+                    order.save()
+                    history = OrderHistory(Order=order,OldStatus=order.Status,Status=order.Status,Reason='支付')
+                    history.save()
+                    #记录记账单
+                    from money.models import Credit
+                    Credit.filter(Order=order,Amt=order.TotalAmt,is_paid=False).update(is_paid=True)
+                except Receipt.DoesNotExist:
+                    return JsonResponse(code=400,desc=u'订单不存在或者已付款')
+                except Exception as e:
+                    raise e
+                    return JsonResponse(code=400,desc=u'ERROR')
+
+class AppPay(APIView):
+    '''
+    APP调用支付宝的统一支付接口
+    ---
+    Parameters:
+    incrementId 订单号 保证金传入保证金的订单号 订单传入BilNo (必填)
+    subject 支付标题(必填)
+    amt 交易金额(必填) 单位 元
+    '''
+    @transaction.atomic()
+    def post(self, request):
+
+        if 'incrementId' not in request.data.keys():
+            return JsonResponse(code=400,desc=u'请先传入订单号')
+        if 'subject' not in request.data.keys():
+            return JsonResponse(code=400,desc=u'请传入支付标题')
+        if 'amt' not in request.data.keys():
+            return JsonResponse(code=400,desc=u'请确定支付金额')
+
+        out_trade_no = request.data['incrementId']
+        subject = request.data['subject']
+        amt = request.data['amt']
+        
+
+        alipay = AliPay()
+        order_string = alipay.api_alipay_trade_app_pay(subject, out_trade_no, amt)
+        return JsonResponse(data=order_string)
+
+class Refund(APIView):
+    '''
+    退款
+    ---
+    Parameters:
+    incrementId 订单号 保证金传入保证金的订单号 订单传入BilNo (必填)
+    amt 退款金额(必填) 单位 元
+    '''
+    @transaction.atomic()
+    def post(self, request):
+
+        if 'incrementId' not in request.data.keys():
+            return JsonResponse(code=400,desc=u'请先确定要退款的订单')
+        if 'amt' not in request.data.keys():
+            return JsonResponse(code=400,desc=u'请确定支付金额')
+
+        out_trade_no = request.data['incrementId']
+        amt = request.data['amt']
+        
+
+        alipay = AliPay()
+        order_string = alipay.api_alipay_trade_refund(out_trade_no=out_trade_no, refund_amount=amt)
+        if result["code"] == "10000":
+            return JsonResponse(desc=u'退款成功')
+        else:
+            return JsonResponse(desc=result['sub_msg'],code=400)

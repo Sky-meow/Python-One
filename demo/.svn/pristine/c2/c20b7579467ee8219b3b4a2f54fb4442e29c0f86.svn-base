@@ -1,0 +1,36 @@
+#encoding:utf-8
+
+from rest_framework import serializers
+from material.models import *
+
+ 
+class MatTypeSerializers(serializers.ModelSerializer):
+    '''
+    货品类别
+    '''
+    # created_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    # updated_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+
+    parent_name = serializers.SerializerMethodField()
+    def get_parent_name(self, obj):
+        return str(obj.parent)
+
+    class Meta:
+        model = MatType
+        #fields = '__all__'
+        exclude = ('created_at', 'created_by', 'updated_at', 'updated_by')
+ 
+class MaterialSerializers(serializers.ModelSerializer):
+    '''
+    货品
+    '''
+    # created_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    # updated_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+
+    type_name = serializers.SerializerMethodField()
+    def get_type_name(self, obj):
+        return str(obj.mattype)
+    
+    class Meta:
+        model = Material
+        exclude = ('created_at', 'created_by', 'updated_at', 'updated_by')

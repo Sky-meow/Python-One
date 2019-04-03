@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+{% load staticfiles %}
+<html> 
+    <head>
+        <link rel="stylesheet" href="{% static 'css/index.css' %}" />
+    </head>
+    <body>
+        <script src="{% static 'js/index.js' %}"></script>
+        <h4>你好</h4>
+    </body>
+</html>

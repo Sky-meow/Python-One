@@ -1,0 +1,415 @@
+#encoding:utf-8
+
+'''
+商品的api集合
+'''
+import coreapi
+from django.db import transaction
+from api.response import api_paging, JsonResponse, log, DocParam, get_parameter_dic
+from rest_framework import viewsets
+from rest_framework.views import APIView
+from rest_framework.decorators import (
+    api_view,permission_classes, detail_route,action,list_route
+)
+from rest_framework.permissions import AllowAny
+from material.models import *
+from material.serializers import *
+from django.db.models import Q
+
+class get_child_types(APIView):
+    '''
+    获取当前类型的下级类型
+    ---
+    '''
+    coreapi_fields = ()
+
+    def get(self,request,pk=None):
+        try:
+            obj = MatType.objects.get(id=pk)
+            childs = obj.mattype_set.all()
+            serializer = MatTypeSerializers(childs, many=True)
+            return JsonResponse(data=serializer.data)
+        except MatType.DoesNotExist:
+            return JsonResponse(code=400,desc=u'该类型已不存在')
+        except Exception as e:
+            log(request, repr(e), obj='material.get_child_types')
+            return JsonResponse(code=400,desc=u'内部错误')
+
+class get_mattypes(APIView):
+    '''
+    获取商品类型信息
+    ---
+    Parameters:
+    ---
+    search string 模糊搜索参数
+    enable int 0/1 是否启用
+    mattype bigint 所属类别ID
+    mattype_erp bigint 所属类别ERPID
+    mattype_code string 所属类别Code,与ID二选一
+    '''
+    coreapi_fields = (
+        DocParam('search',required=False,type='string',description=u'模糊搜索字段,根据name,code,parent__code,parent__name检索'),
+        DocParam('enable',required=False,type='int',description=u'是否启用,默认是1(启用),要获取禁用的传入0,获取所有传入-1'),
+        DocParam('erp_id',required=False,type='bigint',description=u'ERPID'),
+        DocParam('parent_erp_id',required=False,type='bigint',description=u'所属类别的ERPID,非特殊要求,与"parent_id","parent_code"三选一使用'),
+        DocParam('parent_code',required=False,type='bigint',description=u'所属类别的Code,非特殊要求,与"parent_erp_id","parent_id"三选一使用'),
+        DocParam('parent_id',required=False,type='bigint',description=u'所属类别的系统ID,非特殊要求,与"parent_erp_id","parent_code"三选一使用'),
+        DocParam('orderd',required=False,type='string',description=u'排序字段,倒叙请在字段名前加上-号,默认按照code正序排列'),
+    )
+
+    def get(self, request):
+        queryset = MatType.objects.all()
+        params = get_parameter_dic(request)
+        if 'enable' in params.keys():
+            if params['enable'] == '-1' or params == -1:
+                pass
+            else:
+                queryset = queryset.filter(enable=params['enable'])
+        for field in self.coreapi_fields:
+            if field.name in params.keys():
+                if field.name == 'search':
+                    queryset = queryset.filter(Q(name__icontains=params[field.name])|Q(code__icontains=params[field.name])|Q(parent__code__icontains=params[field.name])|Q(parent__name__icontains=params[field.name]))
+                elif field.name == 'enable':
+                    pass
+                elif field.name == 'parent_erp_id':
+                    queryset = queryset.filter(parent__erp_id=params[field.name])
+                elif field.name == 'parent_id':
+                    queryset = queryset.filter(parent_id=params[field.name])
+                elif field.name == 'parent_code':
+                    queryset = queryset.filter(parent__code=params[field.name])
+                else:
+                    queryset = queryset.filter(**{field.name+'__eq':params[field.name]})
+
+        if 'orderd' in params.keys():
+            queryset = queryset.order_by(params['orderd'])
+        else:
+            queryset = queryset.order_by('code')
+        return api_paging(queryset,request,MatTypeSerializers)
+
+class sync_erp_types(APIView):
+    '''
+    从ERP同步货品类别
+    ---
+    Parameters
+    ---
+    data 
+    json对象 [
+        {ID:1,Code:1,Name:'食品',Image:imageurl,UpCode:-1[,Upgrade:1]},
+        {ID:2,Code:2,Name:'材料',Image:imageurl,UpCode:-1[,Upgrade:1]},
+        ...
+    ]
+    如果Upgrade==1时,会根据ID去寻找对应的类型,有则修改,没有则根据Code的规则新增
+    '''
+    coreapi_fields = (DocParam('data',type='json',description=u'来自ERP的货品类别Json对象,data=[\
+        {ID:1,Code:1,Name:"食品",Image:imageurl,UpCode:-1[,Upgrade:1]},\
+        {ID:2,Code:2,Name:"材料",Image:imageurl,UpCode:-1[,Upgrade:1]},\
+        ...\
+    ]'),
+    )
+        
+    @transaction.atomic()
+    def post(self, request):        
+        import json
+        data = request.data['data']
+        l = json.loads(data)
+        from material.models import MatType
+        new = []
+        try:
+            for item in l:
+                if MatType.objects.filter(erp_id=item['ID']).exists():
+                    if 'Upgrade' in item.keys() and bool(item['Upgrade']):
+                        m = MatType.objects.get(erp_id=item['ID'])
+                        m.code = item['Code']
+                        m.name = item['Name']
+                        m.image = item['Image']
+                        if item['UpCode'] != '-1':
+                            p = None
+                            if not MatType.objects.filter(code=item['UpCode']).exists():
+                                for index, i in enumerate(l):
+                                    if i['Code'] == item['UpCode']:
+                                        p = MatType(code=i['Code'],name=i['Name'],image=item['image'],erp_id=i['ID'],enable=True)
+                                        p.save()
+                                        del l[index]
+                                        break
+                            else:
+                                p = MatType.objects.get(code=item['UpCode'])
+                            if p is not None:
+                                m.parent = p
+                        m.save()
+                else:
+                    if item['UpCode'] == '-1':
+                        m = MatType(code=item['Code'],name=item['Name'],image=item['Image'],erp_id=item['ID'],enable=True)
+                        m.save()
+                    else:
+                        p = None
+                        if not MatType.objects.filter(code=item['UpCode']).exists():
+                            for index, i in enumerate(l):
+                                if i['Code'] == item['UpCode']:
+                                    p = MatType(code=i['Code'],name=i['Name'],image=item['image'],erp_id=i['ID'],enable=True)
+                                    p.save()
+                                    del l[index]
+                                    break
+                        else:
+                            p = MatType.objects.get(code=item['UpCode'])
+
+                        m = MatType(code=item['Code'],name=item['Name'],image=item['image'],erp_id=item['ID'],enable=True)
+                        if p is not None:
+                            m.parent = p
+                        m.save()
+            return JsonResponse()
+        except Exception as e:
+            raise e
+
+@api_view(['GET'])
+@transaction.atomic()
+def get_erp_types_from_text(request):
+    '''
+    从文本文件导入类型到数据库
+    内部使用,作废
+    ---
+    Parameters
+    ---
+    data 
+    json对象 [
+        {id:1,code:1,name:'食品',upcode:-1},
+        {id:2,code:2,name:'材料',upcode:-1},
+        ...
+    ]
+    '''
+    return JsonResponse()
+    # if 'path' not in request.query_params.keys():
+    #     path = '/home/william/桌面/PUMT.txt'
+    # else:
+    #     path = request.query_params.get('path')
+
+    # f = open(path, 'r')
+    # import json
+    # _str = f.read()
+    # _str = _str.lstrip('﻿')
+    # l = json.loads(_str)
+    # from material.models import MatType
+    # new = []
+    # try:
+    #     with transaction.atomic():
+    #         for item in l:
+    #             if MatType.objects.filter(code=item['Code']).exists():
+    #                 pass
+    #             else:
+    #                 if item['UpCode'] == '-1':
+    #                     m = MatType(code=item['Code'],name=item['Name'],erp_id=item['ID'],enable=True)
+    #                     m.save()
+    #                 else:
+    #                     if not MatType.objects.filter(code=item['UpCode']).exists():
+    #                         for index, i in enumerate(l):
+    #                             if i['Code'] == item['UpCode']:
+    #                                 p = MatType(code=i['Code'],name=i['Name'],erp_id=i['ID'],enable=True)
+    #                                 p.save()
+    #                                 del l[index]
+    #                                 break
+    #                     else:
+    #                         p = MatType.objects.get(code=item['UpCode'])
+
+    #                     m = MatType(parent=p, code=item['Code'],name=item['Name'],erp_id=item['ID'],enable=True)
+    #                     m.save()
+    #     return JsonResponse()
+    # except Exception as e:
+    #     raise e
+
+class delete_erp_types(APIView):
+    '''
+    通过传入对应的ERP_id删除商品类型    
+    ---
+    Parameters
+    ---
+    要删除的erpid集合 ids = [] or ids = string() 多个id用英文','隔开
+    '''
+    coreapi_fields = (DocParam('ids',type='string/list',description=u'要删除的erpid集合 {"ids":[1,2,3,4]} or ids = "1,2,3,4" 多个id用英文","隔开'),)
+    
+    @transaction.atomic()
+    def post(self, request):
+        params = get_parameter_dic(request)
+        ids = params.get('ids')
+        if type(ids) == str:
+            ids = ids.split(',')
+        elif type(ids) == list:
+            pass
+        else:
+            return JsonResponse(code=400,desc=u'参数的格式不正确,请参照字段说明')
+
+        try:
+            MatType.objects.filter(erp_id__in=ids).delete()
+            return JsonResponse()
+        except Exception as e:
+            return JsonResponse(code=400,desc=e)
+
+class sync_erp_mats(APIView):
+    '''
+    同步ERP的商品
+    ---
+    Parameters
+    ---
+    data 
+    json对象 [
+        {ID:1,Code:1,Name:'食品'[,price:10,description:描述,MatTypeID:1,Image:imageurl,Image2:imageurl,Image3:imageurl,Image4:imageurl,Image5:imageurl,Image6:imageurl,Upgrade:1]},
+        ...
+    ]
+    如果Upgrade==1时,会根据ID去寻找对应的类型,有则修改,没有则根据Code的规则新增
+    '''
+    coreapi_fields = (DocParam('data',type='json',description=u'来自ERP的货品son对象,data=[\
+        {ID:1,Code:1,Name:"食品"[,price:10,description:描述,MatTypeID:1,Image:imageurl,Image2:imageurl,Image3:imageurl,Image4:imageurl,Image5:imageurl,Image6:imageurl,Unit:个,Spc:套,Remark:123,Upgrade:1]},\
+        ...\
+    ]'),
+    )
+     
+    @transaction.atomic()
+    def post(self, request):        
+        import json
+        data = request.data['data']
+        l = json.loads(data)
+        new = []
+        try:
+            for item in l:
+                if Material.objects.filter(erp_id=item['ID']).exists():
+                    if 'Upgrade' in item.keys() and bool(item['Upgrade']):
+                        m = Material.objects.get(erp_id=item['ID'])
+                        m.code = item['Code']
+                        m.name = item['Name']
+                        if 'Image' in item.keys():
+                            m.image = item['Image']
+                        if 'Image2' in item.keys():
+                            m.image = item['Image2']
+                        if 'Image3' in item.keys():
+                            m.image = item['Image3']
+                        if 'Image4' in item.keys():
+                            m.image = item['Image4']
+                        if 'Image5' in item.keys():
+                            m.image = item['Image5']
+                        if 'Image' in item.keys():
+                            m.image = item['Image6']
+                        if 'Unit' in item.keys():
+                            m.unit = item['Unit']
+                        if 'Spc' in item.keys():
+                            m.spc = item['Spc']
+                        if 'Remark' in item.keys():
+                            m.remark = item['Remark']
+                        if 'MatTypeID' in item.keys():
+                            p = None
+                            if not MatType.objects.filter(erp_id=item['MatTypeID']).exists():
+                                pass
+                            else:
+                                p = MatType.objects.get(code=item['UpCode'])
+                            if p is not None:
+                                m.mattype = p
+                        m.save()
+                else:
+                    m = Material.objects.get(erp_id=item['ID'])
+                    m.code = item['Code']
+                    m.name = item['Name']
+                    if 'Image' in item.keys():
+                        m.image = item['Image']
+                    if 'Image2' in item.keys():
+                        m.image = item['Image2']
+                    if 'Image3' in item.keys():
+                        m.image = item['Image3']
+                    if 'Image4' in item.keys():
+                        m.image = item['Image4']
+                    if 'Image5' in item.keys():
+                        m.image = item['Image5']
+                    if 'Image' in item.keys():
+                        m.image = item['Image6']
+                    if 'Unit' in item.keys():
+                        m.unit = item['Unit']
+                    if 'Spc' in item.keys():
+                        m.spc = item['Spc']
+                    if 'Remark' in item.keys():
+                        m.remark = item['Remark']
+
+                    if 'MatTypeID' not in item.keys():
+                        m.save()
+                    else:
+                        p = None
+                        if not MatType.objects.filter(erp_id=item['MatTypeID']).exists():
+                            pass
+                        else:
+                            p = MatType.objects.get(code=item['UpCode'])
+                        if p is not None:
+                            m.mattype = p
+                        m.save()
+            return JsonResponse()
+        except Exception as e:
+            raise e
+
+class delete_erp_mats(APIView):
+    '''
+    通过传入对应的ERP_id删除商品    
+    ---
+    Parameters
+    ---
+    要删除的erpid集合 ids = [] or ids = string() 多个id用英文','隔开
+    '''
+    coreapi_fields = (DocParam('ids',type='string/list',description=u'要删除的erpid集合 {"ids":[1,2,3,4]} or ids = "1,2,3,4" 多个id用英文","隔开'),)
+    
+    @transaction.atomic()
+    def post(self, request):
+        params = get_parameter_dic(request)
+        ids = params.get('ids')
+        if type(ids) == str:
+            ids = ids.split(',')
+        elif type(ids) == list:
+            pass
+        else:
+            return JsonResponse(code=400,desc=u'参数的格式不正确,请参照字段说明')
+
+        try:
+            Material.objects.filter(erp_id__in=ids).delete()
+            return JsonResponse()
+        except Exception as e:
+            return JsonResponse(code=400,desc=e)
+
+class get_materials(APIView):
+    '''
+    获取商品信息
+    ---
+    Parameters:
+    ---
+    search string 模糊搜索参数
+    enable int 0/1 是否启用
+    mattype bigint 所属类别ID
+    mattype_erp bigint 所属类别ERPID
+    mattype_code string 所属类别Code,与ID二选一
+    '''
+    coreapi_fields = (
+        DocParam('search',required=False,type='string',description=u'模糊搜索字段,根据name,sku,mattype__code,mattype__name检索'),
+        DocParam('enable',required=False,type='int',description=u'是否启用,默认是1(启用),要获取禁用的传入0,获取所有传入-1'),
+        DocParam('mattype',required=False,type='uuid',description=u'所属类别ID,请传入当前系统的ID,非特殊要求,与"mattype_erp","mattype_code"三选一使用'),
+        DocParam('mattype_erp',required=False,type='bigint',description=u'所属类别ID,请传入ERP的ID,非特殊要求,与"mattype","mattype_code"三选一使用'),
+        DocParam('mattype_code',required=False,type='string',description=u'所属类别Code,非特殊要求,与"mattype_erp","mattype"三选一使用'),
+        DocParam('orderd',required=False,type='string',description=u'排序字段,倒叙请在字段名前加上-号,默认按照sku正序排列'),
+    )
+
+    def get(self, request):
+        queryset = Material.objects.all()
+        params = get_parameter_dic(request)
+        if 'enable' in params.keys():
+            if params['enable'] == '-1' or params == -1:
+                pass
+            else:
+                queryset = queryset.filter(enable=params['enable'])
+        for field in self.coreapi_fields:
+            if field.name in params.keys():
+                if field.name == 'search':
+                    queryset = queryset.filter(Q(name__icontains=params[field.name])|Q(sku__icontains=params[field.name])|Q(mattype__code__icontains=params[field.name])|Q(mattype__name__icontains=params[field.name]))
+                elif field.name == 'enable':
+                    pass
+                elif field.name == 'mattype':
+                    queryset = queryset.filter(mattype_id=params[field.name])
+                elif field.name == 'mattype_erp':
+                    queryset = queryset.filter(mattype__erp_id=params[field.name])
+                elif field.name == 'mattype_code':
+                    queryset = queryset.filter(mattype__code=params[field.name])
+
+        if 'orderd' in params.keys():
+            queryset = queryset.order_by(params['orderd'])
+        else:
+            queryset = queryset.order_by('sku')
+        return api_paging(queryset,request,MaterialSerializers)

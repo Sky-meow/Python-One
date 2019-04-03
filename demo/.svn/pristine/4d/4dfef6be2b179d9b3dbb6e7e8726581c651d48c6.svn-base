@@ -1,0 +1,131 @@
+#encoding:utf-8
+
+'''
+商品的api集合
+'''
+import coreapi
+from django.db import transaction
+from api.response import api_paging, JsonResponse, log, DocParam
+from rest_framework import viewsets
+from rest_framework.views import APIView
+from rest_framework.decorators import (
+    api_view,permission_classes, detail_route,action,list_route
+)
+from rest_framework.permissions import AllowAny
+from material.models import *
+from material.serializers import *
+
+@api_view(['GET'])
+def get_child_types(request,pk=None):
+    '''
+    获取当前类型的下级类型
+    ---
+    '''
+    try:
+        obj = MatType.objects.get(id=pk)
+        childs = obj.mattype_set.all()
+        serializer = MatTypeSerializers(childs, many=True)
+        return JsonResponse(data=serializer.data)
+    except MatType.DoesNotExist:
+        return JsonResponse(code=400,desc=u'该类型已不存在')
+    except Exception as e:
+        log(request, repr(e), obj='material.get_child_types')
+        return JsonResponse(code=400,desc=u'内部错误')
+
+@api_view(['POST'])
+@transaction.atomic()
+def get_erp_types(request):
+    '''
+    从ERP同步货品类别
+    ---
+    Parameters
+    ---
+    data 
+    json对象 [
+        {id:1,code:1,name:'食品',upcode:-1},
+        {id:2,code:2,name:'材料',upcode:-1},
+        ...
+    ]
+    '''
+    import json
+    data = request.data['data']
+    l = json.loads(data)
+    from material.models import MatType
+    new = []
+    try:
+        for item in l:
+            if MatType.objects.filter(code=item['Code']).exists():
+                pass
+            else:
+                if item['UpCode'] == '-1':
+                    m = MatType(code=item['Code'],name=item['Name'],erp_id=item['ID'],enable=True)
+                    m.save()
+                else:
+                    if not MatType.objects.filter(code=item['UpCode']).exists():
+                        for index, i in enumerate(l):
+                            if i['Code'] == item['UpCode']:
+                                p = MatType(code=i['Code'],name=i['Name'],erp_id=i['ID'],enable=True)
+                                p.save()
+                                del l[index]
+                                break
+                    else:
+                        p = MatType.objects.get(code=item['UpCode'])
+
+                    m = MatType(parent=p, code=item['Code'],name=item['Name'],erp_id=item['ID'],enable=True)
+                    m.save()
+        return JsonResponse()
+    except Exception as e:
+        raise e
+
+@api_view(['GET'])
+@transaction.atomic()
+def get_erp_types_from_text(request):
+    '''
+    从文本文件导入类型到数据库
+    ---
+    Parameters
+    ---
+    data 
+    json对象 [
+        {id:1,code:1,name:'食品',upcode:-1},
+        {id:2,code:2,name:'材料',upcode:-1},
+        ...
+    ]
+    '''
+    if 'path' not in request.query_params.keys():
+        path = '/home/william/桌面/PUMT.txt'
+    else:
+        path = request.query_params.get('path')
+
+    f = open(path, 'r')
+    import json
+    _str = f.read()
+    _str = _str.lstrip('﻿')
+    l = json.loads(_str)
+    from material.models import MatType
+    new = []
+    try:
+        with transaction.atomic():
+            for item in l:
+                if MatType.objects.filter(code=item['Code']).exists():
+                    pass
+                else:
+                    if item['UpCode'] == '-1':
+                        m = MatType(code=item['Code'],name=item['Name'],erp_id=item['ID'],enable=True)
+                        m.save()
+                    else:
+                        if not MatType.objects.filter(code=item['UpCode']).exists():
+                            for index, i in enumerate(l):
+                                if i['Code'] == item['UpCode']:
+                                    p = MatType(code=i['Code'],name=i['Name'],erp_id=i['ID'],enable=True)
+                                    p.save()
+                                    del l[index]
+                                    break
+                        else:
+                            p = MatType.objects.get(code=item['UpCode'])
+
+                        m = MatType(parent=p, code=item['Code'],name=item['Name'],erp_id=item['ID'],enable=True)
+                        m.save()
+        return JsonResponse()
+    except Exception as e:
+        raise e

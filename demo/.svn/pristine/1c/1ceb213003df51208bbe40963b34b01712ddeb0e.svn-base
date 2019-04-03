@@ -1,0 +1,24 @@
+#encoding:utf-8
+import qrcode
+from django.http import HttpResponse
+from django.utils.six import BytesIO
+from rest_framework.decorators import api_view
+from api.response import JsonResponse,api_paging
+
+'''
+接口工具类
+提供各种工具方法
+'''
+@api_view(['GET'])
+def getQrcode(request,v=None):
+    '''
+    根据请求的值返回二维码
+    '''
+    img = qrcode.make(v)
+ 
+    buf = BytesIO()
+    img.save(buf)
+    image_stream = buf.getvalue()
+
+    response = HttpResponse(image_stream, content_type="image/png")
+    return response

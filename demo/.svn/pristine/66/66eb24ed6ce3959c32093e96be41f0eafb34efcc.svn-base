@@ -1,0 +1,128 @@
+[
+  {
+    "model": "system.Config",
+    "fields": {
+      "type": "feeRule",
+      "path": "fare_starting",
+      "label": "运费起步价",
+      "value": 0,
+      "valuetype": "float",
+      "enable": true,
+      "created_at": "2018-11-06 16:53:00",
+      "updated_at": "2018-11-06 16:53:00"
+    }
+  },
+
+  {
+    "model": "system.Config",
+    "fields": {
+      "type": "feeRule",
+      "path": "mindistince",
+      "label": "起步里程",
+      "value": 0,
+      "valuetype": "float",
+      "enable": true,
+      "created_at": "2018-11-06 16:53:00",
+      "updated_at": "2018-11-06 16:53:00"
+    }
+  },
+
+
+  {
+    "model": "system.Config",
+    "fields": {
+      "type": "feeRule",
+      "path": "fare_renew",
+      "label": "超出每公里加收",
+      "value": 0,
+      "valuetype": "float",
+      "enable": true,
+      "created_at": "2018-11-06 16:53:00",
+      "updated_at": "2018-11-06 16:53:00"
+    }
+  },
+
+  {
+    "model": "system.Config",
+    "fields": {
+      "type": "feeRule",
+      "path": "weigth_starting",
+      "label": "起步重量",
+      "value": 0,
+      "valuetype": "float",
+      "enable": true,
+      "created_at": "2018-11-06 16:53:00",
+      "updated_at": "2018-11-06 16:53:00"
+    }
+  },
+
+  {
+    "model": "system.Config",
+    "fields": {
+      "type": "feeRule",
+      "path": "weight_renew",
+      "label": "超出每公斤加收",
+      "value": 0,
+      "valuetype": "float",
+      "enable": true,
+      "created_at": "2018-11-06 16:53:00",
+      "updated_at": "2018-11-06 16:53:00"
+    }
+  },
+
+  {
+    "model": "system.Config",
+    "fields": {
+      "type": "feeRule",
+      "path": "cold_chain",
+      "label": "冷链车加收",
+      "value": 0,
+      "valuetype": "float",
+      "enable": true,
+      "created_at": "2018-11-06 16:53:00",
+      "updated_at": "2018-11-06 16:53:00"
+    }
+  },
+
+  {
+    "model": "system.Config",
+    "fields": {
+      "type": "system",
+      "path": "service_fee",
+      "label": "系统服务费占比(%)",
+      "value": 0,
+      "valuetype": "float",
+      "enable": true,
+      "created_at": "2018-11-06 16:53:00",
+      "updated_at": "2018-11-06 16:53:00"
+    }
+  },
+
+  {
+    "model": "system.Config",
+    "fields": {
+      "type": "deposit",
+      "path": "enable",
+      "label": "是否启用保证金",
+      "value": 0,
+      "valuetype": "bool",
+      "enable": true,
+      "created_at": "2018-11-06 16:53:00",
+      "updated_at": "2018-11-06 16:53:00"
+    }
+  },
+
+  {
+    "model": "system.Config",
+    "fields": {
+      "type": "deposit",
+      "path": "minimum",
+      "label": "最小保证金",
+      "value": 0,
+      "valuetype": "float",
+      "enable": true,
+      "created_at": "2018-11-06 16:53:00",
+      "updated_at": "2018-11-06 16:53:00"
+    }
+  }
+]

@@ -1,0 +1,8 @@
+#encoding:utf-8
+import sms.api as api
+from django.urls import path,re_path
+
+app_name = 'sms'
+urlpatterns = [
+    path('smscaptcha',api.smscaptcha.as_view()),
+]

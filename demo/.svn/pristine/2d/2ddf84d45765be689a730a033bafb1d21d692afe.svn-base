@@ -1,0 +1,10 @@
+#encoding:utf-8
+import material.api as api
+from django.urls import path,re_path
+
+app_name = 'material'
+urlpatterns = [
+    re_path(r'get_child_types/(?P<pk>.+)/$',api.get_child_types),
+    path('get_erp_types',api.get_erp_types),
+    path('get_erp_types_from_text',api.get_erp_types_from_text),
+]

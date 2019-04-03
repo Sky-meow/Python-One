@@ -1,0 +1,16 @@
+#encoding:utf-8
+from .views.api import index
+from .views.tools import *
+from django.urls import path,re_path,include
+from .schema import SwaggerSchemaView
+
+app_name = 'api'
+urlpatterns = [
+    re_path(r'^docs/', SwaggerSchemaView.as_view()),    
+    re_path(r'tools/getQrcode/(.+)$',getQrcode),
+    re_path(r'tools/smsCaptcha/(?P<phone>.+)/(?P<key>.+)$',smsCaptcha),
+]
+
+from django.conf import settings
+if 'material' in settings.INSTALLED_APPS:
+    urlpatterns.append(re_path(r'material/', include('material.urls.api')))

@@ -1,0 +1,31 @@
+#encoding:utf-8
+'''
+Api授权类
+'''
+from django.db import models
+from user.models import Customer
+# Create your models here.
+
+class customer_auth(models.Model):
+    '''
+    客户授权
+    '''
+    token       = models.CharField(primary_key=True,max_length=40)
+    token_data  = models.TextField(null=False)
+    expire_date = models.DateTimeField(u'有效期到',null=False)
+    customer    = models.OneToOneField(Customer,unique=True,on_delete=models.CASCADE,db_constraint=True)
+
+    def checkToken(self):
+        '''
+        检测token是否有效,如果有效则返回值
+        '''
+        from datetime import datetime
+        if self.expire_date is not None:
+            if datetime.datetime.now() > self.expire_date:
+                return None,False
+            else:
+                return self.token_data,True
+
+    class Meta:
+        verbose_name        = u'Api授权有效期'
+        verbose_name_plural = verbose_name

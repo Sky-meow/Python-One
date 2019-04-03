@@ -1,0 +1,21 @@
+#encoding:utf-8
+'''
+微信支付相关数据实体
+'''
+import uuid
+from django.db import models
+
+class WXOrder(models.Model):
+    id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    transaction_id = models.CharField(max_length=32,default='',null=False,verbose_name=u'微信订单号')
+    order_model    = models.CharField(max=255,null=False,verbose_name=u'订单model名')
+    order_field    = models.CharField(max=255,null=False,verbose_name=u'订单单号字段')
+    order_no       = models.CharField(max_length=20, null=False,default='',db_index=True,unique=True,verbose_name=u'订单编号')
+    prepayid       = models.CharField(max_length=100,null=True,blank=True,verbose_name=u'预支付ID')
+    prepay_at      = models.DateTimeField(default=None,null=True,blank=True,verbose_name=u'预支付时间')
+    total_fee      = models.FloatField(default=0,verbose_name=u'订单金额')
+    refund_fee     = models.FloatField(default=0,verbose_name=u'退款金额')
+
+    class Meta:
+        verbose_name = u'微信订单'
+        verbose_name_plural = verbose_name

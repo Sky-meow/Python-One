@@ -1,0 +1,53 @@
+#encoding:utf-8
+'''
+Api授权类
+'''
+from django.db import models
+from user.models import Customer
+import binascii
+import os
+from datetime import datetime,timedelta
+from django.conf import settings
+# Create your models here.
+
+class customer_auth(models.Model):
+    '''
+    客户授权
+    '''
+    token       = models.CharField(primary_key=True,max_length=40)
+    token_data  = models.TextField(null=False,verbose_name=u'Token保存的缓存数据')
+    expire_date = models.DateTimeField(u'有效期到',null=False)
+    customer    = models.OneToOneField(Customer,unique=True,on_delete=models.CASCADE,db_constraint=True)
+
+    def checkToken(self):
+        '''
+        检测token是否有效,如果有效则返回值
+        '''
+        if self.expire_date is not None and settings.TOKEN_EXPIRE > 0:
+            if datetime.now() > self.expire_date:
+                return False
+            else:
+                return True
+        else:
+            return True
+                # if self.token_data is None:
+                #     return self.customer,True
+                # else:
+                #     return self.token_data,True
+
+    def save(self, *args, **kwargs):
+        if not self.key:
+            self.key = self.generate_key()
+        if settings.TOKEN_EXPIRE > 0:
+            self.expire_date = (datetime.now() + timedelta(minutes=settings.TOKEN_EXPIRE))
+        return super(customer_auth, self).save(*args, **kwargs)
+
+    def generate_key(self):
+        return binascii.hexlify(os.urandom(32)).decode()
+
+    def __str__(self):
+        return self.key
+
+    class Meta:
+        verbose_name        = u'Api授权有效期'
+        verbose_name_plural = verbose_name

@@ -1,0 +1,45 @@
+#encoding:utf-8
+'''
+评论
+'''
+import uuid
+from django.db import models
+from user.models import Customer
+
+# Create your models here.
+
+#评价Tag表
+class Tags(models.Model):
+    '''
+    评价订单的Tag表
+    '''
+    id    = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    type  = models.CharField(default='evaluate',max_length=30,verbose_name='标签类型',db_index=True)
+    value = models.CharField(null=False,default='',max_length=50,verbose_name='标签内容')
+
+    def __str__(self):
+        return self.value
+
+    class Meta:
+        db_table = 'Tags'
+        verbose_name = u'评价标签'
+        verbose_name_plural = verbose_name
+
+#评论记录
+class Evaluate(models.Model):
+    '''
+    评论记录
+    '''
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    evaluate_to = models.ForeignKey(Customer,on_delete=models.CASCADE,related_name='evaluate_to_customer',db_constraint=False,verbose_name='被评论人')
+    grade       = models.FloatField(default=5,null=False,verbose_name='评分')
+    tags        = models.CharField(default='',null=True,max_length=100,verbose_name='标签')
+    content     = models.CharField(default='',null=True,max_length=150,verbose_name='意见建议')
+    order       = models.CharField(max_length=30,null=True,default='',verbose_name='关联订单号')
+    created_at  = models.DateTimeField(auto_now_add=True,verbose_name='创建时间',null=True)
+    created_by  = models.ForeignKey(Customer,null=True,on_delete=models.SET_NULL,related_name='evaluate_customer',db_constraint=False, editable=False,verbose_name='评论人')
+
+    class Meta:
+        db_table = 'Evaluate'
+        verbose_name = u'评价记录'
+        verbose_name_plural = verbose_name
