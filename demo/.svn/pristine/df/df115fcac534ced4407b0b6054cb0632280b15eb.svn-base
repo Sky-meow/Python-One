@@ -1,8 +1,0 @@
-#encoding:utf-8
-from ..views.api import index
-from django.urls import path,re_path,include
-
-app_name = 'api'
-urlpatterns = [
-    path('index',index),
-]

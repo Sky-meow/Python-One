@@ -1,0 +1,2 @@
+                    a = open("static/admin/js/themes.json",encoding='utf-8')	#打开文件,获得一个io.TextIOWrapper(迭代器对象)
+                    content = a.read()			#将迭代器内的所有字节读出,返回str对象.(readline每次读出一行内容，所以，读取时占用内存小，比较适合大文件，该方法返回一个字符串对象。)

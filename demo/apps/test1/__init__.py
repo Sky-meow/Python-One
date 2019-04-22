@@ -1,1 +1,0 @@
-default_app_config = 'test1.apps.Test1Config' #设置默认配置文件
